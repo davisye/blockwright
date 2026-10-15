@@ -3,7 +3,7 @@ import { traceLogOf, type BlockwrightInstance } from "./instance.js";
 import { closeQuietly } from "./lifecycle.js";
 import { PROCESS_START_EVENTS } from "./instance-helpers.js";
 import { retry, type RetryPolicy } from "./retry.js";
-import type { InstanceCloseResult, InstanceLaunchOptions } from "./types-launch.js";
+import type { LoaderEngine, InstanceCloseResult, InstanceLaunchOptions } from "./types-launch.js";
 
 /** The instances a failed launch attempt got as far as starting; either may already be dead. */
 export interface LaunchAttemptFailure {
@@ -15,6 +15,8 @@ export interface LaunchAttemptFailure {
 }
 
 export interface LaunchPairOptions extends DriverOptions {
+  /** Loader used for both instances. Default NeoForge for compatibility. */
+  engine?: LoaderEngine;
   /**
    * Drive this driver; otherwise one is started (from the {@link DriverOptions} here) and closed with the
    * pair.
@@ -128,8 +130,9 @@ async function launchOnce(
   let server: BlockwrightInstance | undefined;
   let client: BlockwrightInstance | undefined;
   try {
-    server = await driver.launchNeoForge("server", serverOptions);
-    client = await driver.launchNeoForge("client", clientOptions);
+    const launch = options.engine === "forge" ? driver.launchForge.bind(driver) : driver.launchNeoForge.bind(driver);
+    server = await launch("server", serverOptions);
+    client = await launch("client", clientOptions);
     const results = await Promise.allSettled([
       server.waitForReady({ timeoutMs: serverTimeout }),
       client.waitForReady({ timeoutMs: clientTimeout }),

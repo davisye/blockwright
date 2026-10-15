@@ -19,6 +19,12 @@ export function parseArgs(argv: string[]): CliOptions {
       return value;
     };
     switch (arg) {
+      case "--engine": {
+        const engine = take();
+        if (engine !== "forge" && engine !== "neoforge") throw new Error("--engine must be forge or neoforge");
+        options.engine = engine;
+        break;
+      }
       case "--config":
         options.config = take();
         break;

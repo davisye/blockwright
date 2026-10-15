@@ -163,6 +163,7 @@ async fn handle_request(request: Value, instances: SharedInstances) -> Result<Va
         "ping" => Ok(json!({ "pong": true })),
         "game.connect" => call(method, params, instances, connect_game).await,
         "neoforge.launch" => call(method, params, instances, launch::launch_neoforge).await,
+        "forge.launch" => call(method, params, instances, launch::launch_forge).await,
         "lifecycle.close" => call(method, params, instances, launch::close_instance).await,
         _ => anyhow::bail!("unknown method: {method}"),
     }

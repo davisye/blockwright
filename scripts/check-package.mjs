@@ -15,7 +15,7 @@ if (pkg.files.includes('java') && !walk(join(dir, 'java')).some(file => file.end
 if (pkg.name === '@izakyl/blockwright-client') {
   const manifest = json(join(dir, 'dist/bundle-manifest.json'));
   if (manifest.version !== pkg.version || manifest.sourceHash !== nativeSourceHash()) throw new Error('Native bundle is stale; run npm run build:release');
-  const expectedJars = [`blockwright-neoforge-agent-${pkg.version}.jar`, `blockwright-coverage-${pkg.version}.jar`].sort();
+  const expectedJars = [`blockwright-forge-agent-${pkg.version}.jar`, `blockwright-neoforge-agent-${pkg.version}.jar`, `blockwright-coverage-${pkg.version}.jar`].sort();
   const jars = readdirSync(join(dir, 'dist/agents')).sort();
   if (JSON.stringify(jars) !== JSON.stringify(expectedJars)) throw new Error('Missing or unexpected bundled JARs');
   for (const file of ['blockwright', ...expectedJars.map(name => `agents/${name}`)]) {

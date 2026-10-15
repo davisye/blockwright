@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import type { LoaderEngine } from "@izakyl/blockwright-client";
 import { fileURLToPath } from "node:url";
 import { readModuleDir, type InstanceRole, type ModuleSpec } from "@izakyl/blockwright-client";
 
@@ -16,7 +19,7 @@ export interface PrefabModule {
   /** Instance roles it may be loaded on. A module naming client classes is client-only. */
   readonly roles: readonly InstanceRole[];
   /** Its sources, read from disk once. */
-  spec(): ModuleSpec;
+  spec(engine?: LoaderEngine): ModuleSpec;
 }
 
 export interface DefineModuleOptions {
@@ -25,6 +28,8 @@ export interface DefineModuleOptions {
   roles?: readonly InstanceRole[];
   /** Where the package directories live; default {@link JAVA_ROOT}. */
   root?: string;
+  /** Optional Forge source overlay; builtin modules use the package java-forge directory. */
+  forgeRoot?: string;
   /** Also take the `.java` files of its subpackages (one module spanning several packages). */
   recursive?: boolean;
 }
@@ -34,12 +39,22 @@ export interface DefineModuleOptions {
  * subdirectories, which are modules of their own, unless `recursive`).
  */
 export function defineModule(name: string, options: DefineModuleOptions = {}): PrefabModule {
-  let spec: ModuleSpec | undefined;
+  const specs = new Map<LoaderEngine, ModuleSpec>();
   return {
     name,
     requires: options.requires ?? [],
     roles: options.roles ?? ["server", "client"],
-    spec: () => (spec ??= readModuleDir(options.root ?? JAVA_ROOT, name, options.recursive ? { recursive: true } : {})),
+    spec: (engine = "neoforge") => {
+      const cached = specs.get(engine);
+      if (cached) return cached;
+      const spec = readModuleDir(options.root ?? JAVA_ROOT, name, options.recursive ? { recursive: true } : {});
+      const forgeRoot = options.forgeRoot ?? (options.root === undefined ? fileURLToPath(new URL("../../java-forge/", import.meta.url)) : undefined);
+      if (engine === "forge" && forgeRoot && existsSync(join(forgeRoot, ...name.split(".")))) {
+        Object.assign(spec.sources, readModuleDir(forgeRoot, name, options.recursive ? { recursive: true } : {}).sources);
+      }
+      specs.set(engine, spec);
+      return spec;
+    },
   };
 }
 

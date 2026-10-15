@@ -20,6 +20,7 @@ export function terminalReason(event: TraceEvent): string | undefined {
       return `process was stopped (code=${data.code ?? "null"}, signal=${data.signal ?? "null"})`;
 
     case "neoforge.jvm_shutdown":
+    case "forge.jvm_shutdown":
       return "JVM entered shutdown";
     default:
       return undefined;

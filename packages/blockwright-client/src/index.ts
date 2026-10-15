@@ -39,6 +39,7 @@ export type {
   InstanceLaunchOptions,
   InstanceLaunchResult,
   InstanceRole,
+  LoaderEngine,
 } from "./types-launch.js";
 export { globMatches } from "./glob.js";
 export { instanceDirOf, seedInstance } from "./seed.js";

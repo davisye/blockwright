@@ -5,7 +5,9 @@ Use TypeScript to control the world, inspect UI, capture evidence, and run Java
 snippets inside the game. Playwright fixtures provide repeatable tests; the MCP
 server exposes the same workflow to compatible assistants.
 
-**Initial support: Linux x64, Minecraft 1.21.1, NeoForge 21.1.233, Java 21.**
+**Linux x64, Minecraft 1.21.1, Java 21; NeoForge 21.1.233 or Forge 52.0.28.**
+This fork adds Forge from source; see [Forge setup and verification](docs/forge.md).
+The upstream npm releases do not include these fork changes.
 The npm packages are ESM. The native release baseline is Ubuntu 24.04 (glibc 2.39,
 OpenSSL 3); other distributions, musl/Alpine, ARM, macOS and Windows are not in the
 supported release matrix. See [environment setup](docs/environment.md).

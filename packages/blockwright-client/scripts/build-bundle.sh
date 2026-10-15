@@ -12,9 +12,10 @@ DIST="$REPO_ROOT/packages/blockwright-client/dist"
 rm -f "$DIST/bundle-manifest.json" "$DIST/blockwright"
 rm -rf "$DIST/agents"
 mkdir -p "$DIST"
-cargo build --locked --release --target-dir "$REPO_ROOT/target"
-cp "$REPO_ROOT/target/release/blockwright" "$DIST/blockwright"
-for project in neoforge-agent coverage-report; do
+NATIVE_TARGET_DIR="${CARGO_TARGET_DIR:-$REPO_ROOT/target}"
+cargo build --locked --release --target-dir "$NATIVE_TARGET_DIR"
+cp "$NATIVE_TARGET_DIR/release/blockwright" "$DIST/blockwright"
+for project in neoforge-agent forge-agent coverage-report; do
   "$REPO_ROOT/$project/gradlew" -p "$REPO_ROOT/$project" --no-daemon clean build
- done
+done
 sh "$SCRIPT_DIR/bundle-agents.sh"

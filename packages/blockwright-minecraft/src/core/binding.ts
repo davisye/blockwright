@@ -56,7 +56,7 @@ export abstract class MinecraftInstance {
   /** Loads the core modules for this side and `modules` (with what they require), each once per connection. */
   async ensure(...modules: PrefabModule[]): Promise<void> {
     const ordered = loadOrder([...coreModules(this.role), ...modules], this.role);
-    await this.instance.ensureModules(ordered.map((module) => module.spec()));
+    await this.instance.ensureModules(ordered.map((module) => module.spec(this.instance.engine)));
   }
 
   /**

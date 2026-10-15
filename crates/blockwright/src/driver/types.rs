@@ -21,6 +21,8 @@ pub(crate) struct InstanceLaunchParams {
     #[serde(default)]
     pub(crate) keep_instance_dir: bool,
     #[serde(default)]
+    pub(crate) preserve_mods: bool,
+    #[serde(default)]
     pub(crate) start_frozen: bool,
 }
 
@@ -44,6 +46,7 @@ pub(crate) struct InstanceCloseParams {
 #[derive(Debug, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct InstanceLaunchResult {
+    pub(crate) engine: blockwright::config::LoaderEngine,
     pub(crate) instance_id: String,
     pub(crate) role: InstanceRole,
     pub(crate) trace_path: PathBuf,
@@ -56,6 +59,7 @@ pub(crate) struct InstanceLaunchResult {
 impl InstanceLaunchResult {
     pub(crate) fn from_neoforge_plan(plan: &LaunchPlan) -> Self {
         Self {
+            engine: plan.resolved.engine,
             instance_id: plan.instance_id.clone(),
             role: plan.role,
             trace_path: plan.trace_path.clone(),

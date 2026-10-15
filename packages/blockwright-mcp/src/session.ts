@@ -12,6 +12,7 @@ import type { RecordedStep } from "./spec.js";
 export type McpUiAdapter = AnyUiAdapter<MinecraftClient, ui.Probe>;
 
 export interface SessionOptions {
+  engine?: import("@izakyl/blockwright-client").LoaderEngine;
   config?: string;
   cwd?: string;
   driverPath?: string;
@@ -158,6 +159,7 @@ export class BlockwrightSession {
     let game: Game;
     try {
       game = await launchGame({
+        engine: this.options.engine,
         cwd: this.options.cwd,
         driverPath: this.options.driverPath,
         config,

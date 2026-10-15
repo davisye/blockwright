@@ -19,6 +19,11 @@ try {
     for (const file of [pkg.main, pkg.types, 'LICENSE', 'README.md', ...Object.values(pkg.bin ?? {})]) assert(paths.has(file), `${pkg.name}: missing ${file}`);
     for (const file of paths) assert(!/\.test\.|\.tsbuildinfo|(^|\/)\.env|node_modules\//.test(file), `Unexpected package file: ${file}`);
     if (pkg.files.includes('java')) assert([...paths].some(f => f.endsWith('.java')));
+    if (name === 'minecraft') {
+      for (const file of ['core/GameJson.java', 'client/InputWitness.java', 'world/TickMeter.java']) {
+        assert(paths.has('java-forge/blockwright/minecraft/' + file), 'Missing Forge overlay: ' + file);
+      }
+    }
     archives.push(join(scratch, info.filename));
   }
   const consumer = join(scratch, 'consumer');

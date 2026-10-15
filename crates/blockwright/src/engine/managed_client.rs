@@ -18,6 +18,42 @@ pub(crate) struct ClientLaunchMetadata {
     pub game_args: Vec<String>,
 }
 
+/// Forge's installer inherits a vanilla profile but does not install that profile itself.
+pub(crate) async fn ensure_vanilla_client(game_dir: &Path, minecraft: &str) -> Result<()> {
+    let dir = game_dir.join("versions").join(minecraft);
+    let metadata_path = dir.join(format!("{minecraft}.json"));
+    if !metadata_path.exists() {
+        let manifest: Value = serde_json::from_slice(
+            &crate::http::get_bytes(
+                "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json",
+            )
+            .await?,
+        )?;
+        let url = manifest
+            .get("versions")
+            .and_then(Value::as_array)
+            .and_then(|versions| {
+                versions
+                    .iter()
+                    .find(|entry| entry.get("id").and_then(Value::as_str) == Some(minecraft))
+            })
+            .and_then(|entry| entry.get("url"))
+            .and_then(Value::as_str)
+            .with_context(|| format!("Minecraft version manifest has no release {minecraft}"))?;
+        crate::http::download(url, &metadata_path).await?;
+    }
+    let jar = dir.join(format!("{minecraft}.jar"));
+    if !jar.exists() {
+        let metadata = read_json_file(&metadata_path)?;
+        let url = metadata
+            .pointer("/downloads/client/url")
+            .and_then(Value::as_str)
+            .context("Minecraft version metadata has no client download")?;
+        crate::http::download(url, &jar).await?;
+    }
+    Ok(())
+}
+
 pub(crate) async fn ensure_client_libraries(game_dir: &Path, version_id: &str) -> Result<()> {
     let mut version_chain = Vec::new();
     collect_version_chain(game_dir, version_id, &mut version_chain)?;

@@ -84,18 +84,25 @@ export class BlockwrightDriver {
   }
 
   async launchNeoForge(role: InstanceRole, options: InstanceLaunchOptions = {}): Promise<BlockwrightInstance> {
-    const result = await this.request<InstanceLaunchResult>("neoforge.launch", {
+    return this.launchLoader("neoforge", role, options);
+  }
+  async launchForge(role: InstanceRole, options: InstanceLaunchOptions = {}): Promise<BlockwrightInstance> {
+    return this.launchLoader("forge", role, options);
+  }
+  private async launchLoader(engine: "neoforge" | "forge", role: InstanceRole, options: InstanceLaunchOptions): Promise<BlockwrightInstance> {
+    const result = await this.request<InstanceLaunchResult>(engine === "forge" ? "forge.launch" : "neoforge.launch", {
       config: options.config,
       role,
       instance: options.instance,
       trace: options.trace,
-      agentMod: options.agentMod ?? resolveBundledAgent("neoforge"),
+      agentMod: options.agentMod ?? resolveBundledAgent(engine),
       startFrozen: options.startFrozen ?? true,
       ...(options.reuseInstanceDir ? { reuseInstanceDir: true } : {}),
       ...(options.keepInstanceDir ? { keepInstanceDir: true } : {}),
+      ...(options.preserveMods ? { preserveMods: true } : {}),
     });
 
-    const instance = new BlockwrightInstance(this, result, this.channelOptions);
+    const instance = new BlockwrightInstance(this, { ...result, engine }, this.channelOptions);
     this.instances.add(instance);
     return instance;
   }
@@ -285,13 +292,13 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 35_000;
 const PROTOCOL_DIAGNOSTIC_LINE_LIMIT = 200;
 const MAX_PROTOCOL_DIAGNOSTICS = 100;
 
-export type DriverMethod = "ping" | "neoforge.launch" | "lifecycle.close" | "game.connect";
+export type DriverMethod = "ping" | "forge.launch" | "neoforge.launch" | "lifecycle.close" | "game.connect";
 
 /** The driver's whole stdio surface: lifecycle only. Game traffic never goes through the driver. */
-const DRIVER_METHODS: ReadonlySet<string> = new Set<DriverMethod>(["ping", "neoforge.launch", "lifecycle.close", "game.connect"]);
+const DRIVER_METHODS: ReadonlySet<string> = new Set<DriverMethod>(["ping", "forge.launch", "neoforge.launch", "lifecycle.close", "game.connect"]);
 
 /** Operations bounded by the game process rather than a budget; its exit ends them. */
-const UNBOUNDED_METHODS: ReadonlySet<string> = new Set<DriverMethod>(["neoforge.launch", "lifecycle.close"]);
+const UNBOUNDED_METHODS: ReadonlySet<string> = new Set<DriverMethod>(["forge.launch", "neoforge.launch", "lifecycle.close"]);
 
 export function resolveRequestTimeoutMs(
   method: string,

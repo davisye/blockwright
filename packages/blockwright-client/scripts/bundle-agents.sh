@@ -6,12 +6,14 @@ VERSION=$(node -p "require(process.argv[1]).version" "$REPO_ROOT/packages/blockw
 AGENTS_DIR="$REPO_ROOT/packages/blockwright-client/dist/agents"
 rm -rf "$AGENTS_DIR"
 mkdir -p "$AGENTS_DIR"
-for project in neoforge-agent coverage-report; do
+for project in neoforge-agent forge-agent coverage-report; do
   case "$project" in
     neoforge-agent) name="blockwright-neoforge-agent-$VERSION.jar" ;;
+    forge-agent) name="blockwright-forge-agent-$VERSION.jar" ;;
     coverage-report) name="blockwright-coverage-$VERSION.jar" ;;
   esac
   jar="$REPO_ROOT/$project/build/libs/$name"
+  if [ -n "${BLOCKWRIGHT_BUILD_ROOT:-}" ]; then jar="$BLOCKWRIGHT_BUILD_ROOT/$project/libs/$name"; fi
   test -s "$jar" || { echo "Missing required artifact: $jar" >&2; exit 1; }
   cp "$jar" "$AGENTS_DIR/$name"
 done

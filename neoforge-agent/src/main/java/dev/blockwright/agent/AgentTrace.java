@@ -66,6 +66,7 @@ final class AgentTrace {
     }
 
     static void emit(String name, String role, JsonObject data) {
+        if (name.startsWith("neoforge.") && "forge".equals(System.getProperty("blockwright.engine"))) name = "forge." + name.substring("neoforge.".length());
         String frame = Json.of("method", "trace", "params", payload(name, role, data)).toString();
         synchronized (AgentTrace.class) {
             if (writer != null) {

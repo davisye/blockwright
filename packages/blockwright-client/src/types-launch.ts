@@ -1,3 +1,5 @@
+export type LoaderEngine = "neoforge" | "forge";
+
 export type InstanceRole = "server" | "client";
 
 export interface InstanceLaunchOptions {
@@ -12,10 +14,13 @@ export interface InstanceLaunchOptions {
   reuseInstanceDir?: boolean;
   /** Reuse the instance dir and keep it past close and `blockwright gc`. */
   keepInstanceDir?: boolean;
+  /** Keep the complete existing mods directory without reseeding old configured jars; requires reuse/keep. */
+  preserveMods?: boolean;
 }
 
-/** What the driver's `neoforge.launch` answers. */
+/** What the driver's `neoforge.launch` or `forge.launch` answers. */
 export interface InstanceLaunchResult {
+  engine?: LoaderEngine;
   instanceId: string;
   role: InstanceRole;
   tracePath: string;

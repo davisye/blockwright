@@ -20,6 +20,40 @@ pub struct LoadedBlockwrightConfig {
 }
 
 impl LoadedBlockwrightConfig {
+    pub fn select_engine(&mut self, engine: LoaderEngine) -> Result<()> {
+        if engine == LoaderEngine::Forge {
+            anyhow::ensure!(
+                self.config.forge.is_some(),
+                "Forge launch requires a [forge] configuration"
+            );
+        }
+        self.config.engine = engine;
+        Ok(())
+    }
+
+    /// Configuration for the loader selected by the launch RPC.
+    pub fn loader(&self) -> &NeoForgeConfig {
+        match self.config.engine {
+            LoaderEngine::NeoForge => &self.config.neoforge,
+            LoaderEngine::Forge => self
+                .config
+                .forge
+                .as_ref()
+                .expect("select_engine validates [forge]"),
+        }
+    }
+
+    pub fn loader_mut(&mut self) -> &mut NeoForgeConfig {
+        match self.config.engine {
+            LoaderEngine::NeoForge => &mut self.config.neoforge,
+            LoaderEngine::Forge => self
+                .config
+                .forge
+                .as_mut()
+                .expect("select_engine validates [forge]"),
+        }
+    }
+
     #[cfg(test)]
     pub fn new(path: PathBuf, root: PathBuf, config: BlockwrightConfig) -> Self {
         Self {
@@ -33,9 +67,15 @@ impl LoadedBlockwrightConfig {
     /// Names a store refs record: the role, prefixed by the profile so profiles do not
     /// overwrite each other's refs.
     pub fn refs_label(&self, role: &str) -> String {
-        match &self.profile {
+        let label = match &self.profile {
             Some(profile) => format!("{profile}-{role}"),
             None => role.to_string(),
+        };
+        // A suffix cannot collide with a NeoForge profile named "forge", whose labels end in the role.
+        if self.config.engine == LoaderEngine::Forge {
+            format!("{label}-forge")
+        } else {
+            label
         }
     }
 
@@ -274,6 +314,9 @@ fn table_has_path(table: &Table, segments: &[String]) -> bool {
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct BlockwrightConfig {
+    #[serde(skip)]
+    pub engine: LoaderEngine,
+    pub forge: Option<NeoForgeConfig>,
     pub neoforge: NeoForgeConfig,
     pub mods: BTreeMap<String, ModSpec>,
     pub trace: TraceConfig,
@@ -449,6 +492,8 @@ impl Default for TraceConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct NeoForgeConfig {
+    /// Opt out of the offscreen client fast exit so all JVM hooks can finish.
+    pub complete_shutdown_hooks: bool,
     pub minecraft_version: String,
     pub loader_version: String,
     pub java: JavaConfig,
@@ -464,6 +509,7 @@ pub struct NeoForgeConfig {
 impl Default for NeoForgeConfig {
     fn default() -> Self {
         Self {
+            complete_shutdown_hooks: false,
             minecraft_version: "1.21.1".to_string(),
             loader_version: "latest".to_string(),
             java: JavaConfig::default(),
@@ -654,6 +700,29 @@ impl InstanceRole {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selecting_a_loader_does_not_replace_the_other_loaders_config() {
+        let mut config = BlockwrightConfig::default();
+        config.neoforge.loader_version = "21.1.233".into();
+        config.forge = Some(NeoForgeConfig {
+            loader_version: "52.0.28".into(),
+            ..Default::default()
+        });
+        let mut loaded =
+            LoadedBlockwrightConfig::new(PathBuf::from("test.toml"), PathBuf::from("."), config);
+        loaded.select_engine(LoaderEngine::Forge).unwrap();
+        assert_eq!(loaded.loader().loader_version, "52.0.28");
+        let forge_refs = loaded.refs_label("server");
+        assert_eq!(forge_refs, "server-forge");
+        loaded.select_engine(LoaderEngine::NeoForge).unwrap();
+        assert_eq!(loaded.loader().loader_version, "21.1.233");
+        assert_eq!(loaded.refs_label("server"), "server");
+        loaded.profile = Some("forge".into());
+        assert_ne!(loaded.refs_label("server"), forge_refs);
+        loaded.config.forge = None;
+        assert!(loaded.select_engine(LoaderEngine::Forge).is_err());
+    }
 
     #[test]
     fn render_device_round_trips_through_its_string_form() {
@@ -1012,5 +1081,23 @@ excludes = ["b.*"]
             }
         }
         assert!(count > 0);
+    }
+}
+
+/// Supported mod loaders. NeoForge remains the backwards-compatible default.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, clap::ValueEnum)]
+#[serde(rename_all = "lowercase")]
+pub enum LoaderEngine {
+    #[default]
+    #[value(name = "neoforge")]
+    NeoForge,
+    Forge,
+}
+impl LoaderEngine {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::NeoForge => "neoforge",
+            Self::Forge => "forge",
+        }
     }
 }

@@ -5,4 +5,4 @@ import type { BlockwrightInstance } from "@izakyl/blockwright-client";
  * directory and trace are where failure evidence reads how the process ended and what it logged.
  */
 export type GameInstance = Pick<BlockwrightInstance,
-  "instanceId" | "role" | "run" | "ensureModules" | "instanceDir" | "tracePath">;
+  "instanceId" | "role" | "run" | "ensureModules" | "instanceDir" | "tracePath"> & Partial<Pick<BlockwrightInstance, "engine">>;

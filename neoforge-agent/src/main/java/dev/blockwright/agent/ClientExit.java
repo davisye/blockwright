@@ -47,7 +47,7 @@ final class ClientExit {
 
     private static void onShutdown() {
         boolean released = releaseContext();
-        if (!released || exitFunction == 0L) {
+        if (!released || exitFunction == 0L || Boolean.getBoolean("blockwright.client.completeShutdownHooks")) {
             // The render thread may still hold the context, or there is no _exit: leave the exit to the JVM.
             return;
         }

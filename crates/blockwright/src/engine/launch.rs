@@ -24,8 +24,11 @@ pub(super) async fn install_runtime(
     match role {
         InstanceRole::Server => install_neoforge_server(neoforge, resolved, installer, dir).await,
         InstanceRole::Client => {
+            if resolved.engine == crate::config::LoaderEngine::Forge {
+                managed_client::ensure_vanilla_client(dir, &resolved.minecraft_version).await?;
+            }
             install_neoforge_client(neoforge, resolved, installer, dir).await?;
-            let version_id = format!("neoforge-{}", resolved.loader_version);
+            let version_id = resolved.client_version_id();
             managed_client::ensure_client_libraries(dir, &version_id).await?;
             managed_client::ensure_client_assets(dir, &resolved.minecraft_version).await
         }
@@ -40,7 +43,7 @@ pub(super) fn seed_and_launch(
     resolved: &ResolvedNeoForgeVersions,
     coverage_agent: Option<&str>,
 ) -> Result<LaunchCommand> {
-    let neoforge = &loaded.config.neoforge;
+    let neoforge = loaded.loader();
     let role = options.role;
     let mut args = blockwright_jvm_args(
         &neoforge.jvm_args,
@@ -49,6 +52,10 @@ pub(super) fn seed_and_launch(
         options,
         coverage_agent,
     );
+    args.push(format!("-Dblockwright.engine={}", resolved.engine.as_str()));
+    if neoforge.complete_shutdown_hooks {
+        args.push("-Dblockwright.client.completeShutdownHooks=true".to_string());
+    }
     if role == InstanceRole::Client {
         args.push("-Djava.awt.headless=false".to_string());
         if let Some(port_file) = &neoforge.client.connect_port_file {
@@ -141,7 +148,8 @@ async fn install_neoforge_client(
     game_dir: &Path,
 ) -> Result<()> {
     let marker = game_dir.join(".blockwright").join(format!(
-        "neoforge-client-{}.installed",
+        "{}-client-{}.installed",
+        versions.engine.as_str(),
         versions.loader_version
     ));
     if marker.exists() && neoforge_client_version_json(game_dir, versions).exists() {
@@ -185,12 +193,16 @@ fn neoforge_launch_args_file(
     game_dir: &Path,
     versions: &ResolvedNeoForgeVersions,
 ) -> Result<PathBuf> {
+    let (group, artifact) = if versions.engine == crate::config::LoaderEngine::Forge {
+        ("minecraftforge", "forge")
+    } else {
+        ("neoforged", "neoforge")
+    };
     let version_dir = game_dir
-        .join("libraries")
-        .join("net")
-        .join("neoforged")
-        .join("neoforge")
-        .join(&versions.loader_version);
+        .join("libraries/net")
+        .join(group)
+        .join(artifact)
+        .join(versions.artifact_version());
     let platform_args = if cfg!(windows) {
         version_dir.join("win_args.txt")
     } else {
@@ -213,7 +225,7 @@ fn neoforge_launch_args_file(
 }
 
 fn neoforge_client_version_json(game_dir: &Path, versions: &ResolvedNeoForgeVersions) -> PathBuf {
-    let version_id = format!("neoforge-{}", versions.loader_version);
+    let version_id = versions.client_version_id();
     game_dir
         .join("versions")
         .join(&version_id)
@@ -228,13 +240,14 @@ pub(super) fn resolve_agent_mod_path(
         return Some(loaded.resolve_path(path));
     }
 
-    if let Some(path) = &loaded.config.neoforge.agent_mod {
+    if let Some(path) = &loaded.loader().agent_mod {
         return Some(loaded.resolve_path(path));
     }
 
-    jar_search_dirs(loaded, Path::new("neoforge-agent/build/libs"))
+    let engine = loaded.config.engine.as_str();
+    jar_search_dirs(loaded, Path::new(&format!("{engine}-agent/build/libs")))
         .into_iter()
-        .find_map(|dir| find_jar(&dir, "blockwright-neoforge-agent-"))
+        .find_map(|dir| find_jar(&dir, &format!("blockwright-{engine}-agent-")))
 }
 
 /// Where a jar Blockwright builds or ships is looked for: `build_libs` (a Gradle output dir,
@@ -343,7 +356,7 @@ fn prepare_client_command(
     blockwright_jvm_args: &[String],
     game_dir: &Path,
 ) -> Result<(String, Vec<String>, PathBuf)> {
-    let version_id = format!("neoforge-{}", versions.loader_version);
+    let version_id = versions.client_version_id();
     let launch = managed_client::build_client_launch_metadata(
         game_dir,
         &version_id,
@@ -478,6 +491,7 @@ mod tests {
             agent_mod_path: None,
             reuse_instance_dir: false,
             keep_instance_dir: false,
+            preserve_mods: false,
             start_frozen: true,
         };
         let flag = "-Dblockwright.server.startFrozen=true";
@@ -497,6 +511,7 @@ mod tests {
             agent_mod_path: None,
             reuse_instance_dir: false,
             keep_instance_dir: false,
+            preserve_mods: false,
             start_frozen: false,
         };
         let configured = ["-Xmx2G".to_string()];

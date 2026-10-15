@@ -13,7 +13,7 @@ import { delay, PROCESS_START_EVENTS, READY_EVENT, terminalReason, TraceLog } fr
 import { poll } from "./poll.js";
 import { Run, type RunHandle, type RunOptions, type TaskSpec, type TaskThread } from "./run.js";
 import type { RequestOptions, TraceEvent, WaitForReadyOptions, WaitOptions } from "./types-core.js";
-import type { InstanceCloseOptions, InstanceCloseResult, InstanceLaunchResult, InstanceRole } from "./types-launch.js";
+import type { LoaderEngine, InstanceCloseOptions, InstanceCloseResult, InstanceLaunchResult, InstanceRole } from "./types-launch.js";
 import { ModuleLedger, moduleHash, type ModuleSpec } from "./modules.js";
 
 /** What {@link BlockwrightInstance.ensureModules} did. */
@@ -110,6 +110,7 @@ export let abandonInstance!: (instance: BlockwrightInstance) => void;
  * Minecraft semantics; prefabs build those on {@link run} and {@link load}.
  */
 export class BlockwrightInstance {
+  readonly engine: LoaderEngine;
   readonly instanceId: string;
   readonly role: InstanceRole;
   readonly tracePath: string;
@@ -133,6 +134,7 @@ export class BlockwrightInstance {
     this.#channelOptions = channelOptions;
     this.instanceId = launch.instanceId;
     this.role = launch.role;
+    this.engine = launch.engine ?? "neoforge";
     this.tracePath = resolve(driver.cwd, launch.tracePath);
     this.instanceDir = launch.instanceDir;
   }

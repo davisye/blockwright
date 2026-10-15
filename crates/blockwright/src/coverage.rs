@@ -193,7 +193,7 @@ async fn plan(loaded: &LoadedBlockwrightConfig, jars: &[CachedFile]) -> Result<P
         args.push("--jar".into());
         args.push(jar.path.clone().into());
     }
-    let java = &loaded.config.neoforge.java.runtime;
+    let java = &loaded.loader().java.runtime;
     let output = Command::new(java)
         .arg("-jar")
         .arg(&tool)
@@ -419,7 +419,7 @@ pub async fn report(loaded: &LoadedBlockwrightConfig, out: Option<PathBuf>) -> R
             .unwrap_or_else(|| "coverage".to_string()),
     };
     let args = report_args(&jars, &data_dirs, loaded, &out, &name);
-    let java = &loaded.config.neoforge.java.runtime;
+    let java = &loaded.loader().java.runtime;
     let status = Command::new(java)
         .arg("-jar")
         .arg(&tool)

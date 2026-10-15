@@ -18,7 +18,7 @@ export interface StopServerResult {
 
 const STOP = worldTask<Record<string, never>, { stopping: true; tick: number }>("server.stop", "ServerControl.stop", { timeoutMs: 15_000 });
 
-const SHUTDOWN_EVENT = "neoforge.jvm_shutdown";
+const shutdownEvent = (handle: MinecraftServer) => `${handle.instance.engine ?? "neoforge"}.jvm_shutdown`;
 
 type TraceWaiter = Pick<BlockwrightInstance, "waitForTrace" | "waitForExit">;
 
@@ -47,7 +47,7 @@ export async function stopServer(handle: MinecraftServer, options: StopServerOpt
   const deadline = Date.now() + (options.timeoutMs ?? 60_000);
   let shutDown = false;
   try {
-    await instance.waitForTrace(SHUTDOWN_EVENT, { timeoutMs: Math.max(0, deadline - Date.now()), pollMs: 250 });
+    await instance.waitForTrace(shutdownEvent(handle), { timeoutMs: Math.max(0, deadline - Date.now()), pollMs: 250 });
     shutDown = true;
   } catch {
     // Gone before the shutdown event was seen, or not within the budget: whether it exited says the rest.

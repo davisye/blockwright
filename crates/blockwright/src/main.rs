@@ -78,6 +78,8 @@ struct ModsSyncArgs {
 
 #[derive(Debug, Args)]
 struct GcArgs {
+    #[arg(long, value_enum, default_value = "neoforge")]
+    engine: blockwright::config::LoaderEngine,
     #[arg(long, default_value = "blockwright.toml")]
     config: PathBuf,
     #[arg(long, help = "List what would go without deleting it")]
@@ -143,11 +145,12 @@ fn coverage_reset(args: CoverageResetArgs) -> Result<()> {
 fn run_gc_command(args: GcArgs) -> Result<()> {
     use blockwright::store::gc::{gc, GcScope};
 
-    let loaded = load_config(&args.config)?;
+    let mut loaded = load_config(&args.config)?;
+    loaded.select_engine(args.engine)?;
     let (store_dir, cwd) = (loaded.store_dir(), std::env::current_dir()?);
     let scope = GcScope {
         store_dir: &store_dir,
-        instances_dir: &loaded.resolve_path(&loaded.config.neoforge.instances_dir),
+        instances_dir: &loaded.resolve_path(&loaded.loader().instances_dir),
         traces_dir: &loaded.resolve_path(&loaded.config.trace.dir),
         registry_root: &cwd,
     };

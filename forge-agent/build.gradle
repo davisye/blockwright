@@ -1,0 +1,98 @@
+plugins {
+    id 'java-library'
+    id 'net.minecraftforge.gradle' version '6.0.54'
+}
+
+group = 'dev.blockwright'
+version = project.mod_version
+base.archivesName = 'blockwright-forge-agent'
+repositories { mavenCentral() }
+
+// Keep large build outputs outside the source checkout when requested.
+def externalBuild = providers.gradleProperty('buildRoot').orElse(providers.environmentVariable('BLOCKWRIGHT_BUILD_ROOT'))
+if (externalBuild.isPresent()) layout.buildDirectory = file("${externalBuild.get()}/${project.projectDir.name}")
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(project.java_release.toInteger())
+    withSourcesJar()
+}
+minecraft {
+    mappings channel: 'official', version: project.minecraft_version
+    reobf = false
+}
+
+// Protocol, compiler, public API and Minecraft mixins are shared. Only loader adapters differ.
+def shared = file('../neoforge-agent/src/main/java')
+def platformSources = [
+    'dev/blockwright/agent/BlockwrightMod.java',
+    'dev/blockwright/agent/Lifecycle.java',
+    'dev/blockwright/agent/ClientFrames.java',
+    'dev/blockwright/agent/ClientAutoConnect.java',
+    'dev/blockwright/agent/EpochChannel.java',
+    'dev/blockwright/agent/CrashHandler.java',
+    'dev/blockwright/agent/mixin/LoadingErrorScreenMixin.java',
+]
+sourceSets.main.java {
+    srcDirs = [shared, 'src/main/java']
+    exclude { item -> item.file.toPath().startsWith(shared.toPath()) && platformSources.contains(item.path) }
+}
+sourceSets.main.resources {
+    srcDirs = ['../neoforge-agent/src/main/resources', 'src/main/resources']
+    exclude 'META-INF/neoforge.mods.toml'
+}
+sourceSets.test.java.srcDir '../neoforge-agent/src/test/java'
+sourceSets.test.compileClasspath += sourceSets.main.compileClasspath
+sourceSets.test.runtimeClasspath += sourceSets.main.compileClasspath
+
+// Check runtime-compiled prefabs against Forge without bundling them into the agent.
+def apiJar = tasks.register('apiJar', Jar) {
+    archiveClassifier = 'api'
+    destinationDirectory = layout.buildDirectory.dir('api')
+    from(sourceSets.main.output) { include 'dev/blockwright/api/**' }
+}
+def moduleDirs = (file('../packages').listFiles() ?: [])
+    .collect { new File(it, 'java') }.findAll { it.isDirectory() }.sort()
+def forgeModules = file('../packages/blockwright-minecraft/java-forge')
+def overrides = [
+    'blockwright/minecraft/core/GameJson.java',
+    'blockwright/minecraft/client/InputWitness.java',
+    'blockwright/minecraft/world/TickMeter.java',
+]
+sourceSets {
+    modules {
+        java {
+            srcDirs = moduleDirs + [forgeModules]
+            exclude { item -> !item.file.toPath().startsWith(forgeModules.toPath()) && overrides.contains(item.path) }
+        }
+        resources { srcDirs = [] }
+        compileClasspath = sourceSets.main.compileClasspath + files(apiJar)
+    }
+}
+tasks.named('check') { dependsOn 'compileModulesJava' }
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    compileOnly 'com.google.code.gson:gson:2.10.1'
+    testImplementation 'com.google.code.gson:gson:2.10.1'
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+test {
+    useJUnitPlatform()
+    systemProperty 'blockwright.engine', 'forge'
+}
+tasks.withType(JavaCompile).configureEach {
+    options.release = project.java_release.toInteger()
+    options.encoding = 'UTF-8'
+}
+processResources {
+    inputs.property 'version', project.version
+    inputs.property 'forge_version_range', project.forge_version_range
+    filesMatching('META-INF/mods.toml') {
+        expand(version: project.version, forge_version_range: project.forge_version_range)
+    }
+}
+jar {
+    manifest { attributes 'MixinConfigs': 'blockwright.mixins.json,blockwright.access.mixins.json' }
+}

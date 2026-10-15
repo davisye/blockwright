@@ -59,6 +59,8 @@ pub struct LaunchOptions {
     pub reuse_instance_dir: bool,
     /// Reuse the instance dir and keep it past close and `blockwright gc`.
     pub keep_instance_dir: bool,
+    /// Preserve the complete existing mods directory, including updated files. Requires reuse/keep.
+    pub preserve_mods: bool,
     /// Servers freeze their tick rate before the first tick; restarts reuse the same args.
     pub start_frozen: bool,
 }
@@ -135,18 +137,19 @@ pub async fn prepare_launch(
     options: LaunchOptions,
 ) -> Result<(LaunchPlan, LaunchLock)> {
     let config = &loaded.config;
-    let neoforge_config = &config.neoforge;
+    let neoforge_config = loaded.loader();
     let role = options.role;
     if role == InstanceRole::Server && !neoforge_config.server.eula {
-        anyhow::bail!("Minecraft EULA acceptance is required: read https://www.minecraft.net/eula and set [neoforge.server] eula = true in your config to accept it");
+        anyhow::bail!("Minecraft EULA acceptance is required: read https://www.minecraft.net/eula and set [{}.server] eula = true in your config to accept it", config.engine.as_str());
     }
 
-    let instance_id = format!("neoforge-{}-{}", role.as_str(), Uuid::new_v4());
+    let engine = config.engine;
+    let instance_id = format!("{}-{}-{}", engine.as_str(), role.as_str(), Uuid::new_v4());
     let instance_name = options
         .instance_name
         .clone()
         .or_else(|| neoforge_config.instance_name.clone())
-        .unwrap_or_else(|| format!("neoforge-{}", role.as_str()));
+        .unwrap_or_else(|| format!("{}-{}", engine.as_str(), role.as_str()));
     let store_dir = loaded.store_dir();
     let instance_dir = loaded
         .resolve_path(&neoforge_config.instances_dir)
@@ -154,6 +157,12 @@ pub async fn prepare_launch(
     let (lock_dir, locked_dir) = (store_dir.clone(), instance_dir.clone());
     let lock = blocking(move || LaunchLock::acquire(&lock_dir, &locked_dir)).await?;
     refuse_running_instance_dir(&instance_dir)?;
+    anyhow::ensure!(
+        !options.preserve_mods
+            || ((options.reuse_instance_dir || options.keep_instance_dir)
+                && instance_dir.join("mods").is_dir()),
+        "preserveMods requires a seeded instance and reuseInstanceDir or keepInstanceDir"
+    );
     if !(options.reuse_instance_dir || options.keep_instance_dir) && instance_dir.exists() {
         let doomed = instance_dir.clone();
         blocking(move || {
@@ -171,8 +180,22 @@ pub async fn prepare_launch(
             .resolve_path(&config.trace.dir)
             .join(format!("{instance_id}.ndjson"))
     });
-    let resolved = neoforge::resolve_versions(neoforge_config).await?;
-    let requirements = neoforge::runtime_requirements(neoforge_config, &resolved);
+    let resolved = match engine {
+        crate::config::LoaderEngine::NeoForge => {
+            neoforge::resolve_versions(neoforge_config).await?
+        }
+        crate::config::LoaderEngine::Forge => {
+            crate::forge::resolve_versions(neoforge_config).await?
+        }
+    };
+    let requirements = match engine {
+        crate::config::LoaderEngine::NeoForge => {
+            neoforge::runtime_requirements(neoforge_config, &resolved)
+        }
+        crate::config::LoaderEngine::Forge => {
+            crate::forge::runtime_requirements(neoforge_config, &resolved)
+        }
+    };
     let mut warnings = Vec::new();
 
     let runtime_key = format!(
@@ -181,10 +204,27 @@ pub async fn prepare_launch(
         resolved.minecraft_version,
         resolved.loader_version
     );
+    let runtime_key = if engine == crate::config::LoaderEngine::Forge {
+        format!("forge-{runtime_key}")
+    } else {
+        runtime_key
+    };
     let runtime = ensure_runtime(loaded, role, &resolved, &store_dir, &runtime_key)
         .await
-        .context("failed to install the NeoForge runtime")?;
-    let mods = instance_mods(loaded, &options, &store_dir, &mut warnings).await?;
+        .with_context(|| format!("failed to install the {} runtime", engine.as_str()))?;
+    let mods = if options.preserve_mods {
+        let cache = cache::Cache::new(&store_dir);
+        let mut files = Vec::new();
+        for entry in fs::read_dir(instance_dir.join("mods"))? {
+            let path = entry?.path();
+            if path.extension().is_some_and(|ext| ext == "jar") && path.is_file() {
+                files.push(mods::local(&cache, &path).await?);
+            }
+        }
+        files
+    } else {
+        instance_mods(loaded, &options, &store_dir, &mut warnings).await?
+    };
     let coverage = coverage::prepare_launch(loaded, &store_dir, &instance_id, role)
         .await
         .context("failed to set up coverage")?;
@@ -203,10 +243,13 @@ pub async fn prepare_launch(
 
     let mod_names = mods.iter().map(|file| file.filename.clone()).collect();
     let target = instance_dir.clone();
+    let preserve_mods = options.preserve_mods;
     blocking(move || {
         cache::link_tree(&runtime, &target, runtime_placement)?;
-        for file in &mods {
-            cache::place(&file.path, &target.join("mods").join(&file.filename))?;
+        if !preserve_mods {
+            for file in &mods {
+                cache::place(&file.path, &target.join("mods").join(&file.filename))?;
+            }
         }
         Ok(())
     })
@@ -281,10 +324,16 @@ async fn instance_mods(
     match launch::resolve_agent_mod_path(loaded, options) {
         Some(path) if path.exists() => files.push(mods::local(&cache, &path).await?),
         Some(path) => warnings.push(format!(
-            "NeoForge agent mod not found at {}; check neoforge.agent_mod",
-            path.display()
+            "{} agent mod not found at {}; check {}.agent_mod",
+            loaded.config.engine.as_str(),
+            path.display(),
+            loaded.config.engine.as_str()
         )),
-        None => warnings.push("NeoForge agent mod not found; set neoforge.agent_mod".to_string()),
+        None => warnings.push(format!(
+            "{} agent mod not found; set {}.agent_mod",
+            loaded.config.engine.as_str(),
+            loaded.config.engine.as_str()
+        )),
     }
     Ok(files)
 }
@@ -336,15 +385,15 @@ async fn ensure_runtime(
     fs::create_dir_all(&staging)
         .with_context(|| format!("failed to create {}", staging.display()))?;
     let built = async {
-        let installer = neoforge::ensure_installer(store_dir, resolved).await?;
-        launch::install_runtime(
-            &loaded.config.neoforge,
-            role,
-            resolved,
-            &installer,
-            &staging,
-        )
-        .await?;
+        let installer = match resolved.engine {
+            crate::config::LoaderEngine::NeoForge => {
+                neoforge::ensure_installer(store_dir, resolved).await?
+            }
+            crate::config::LoaderEngine::Forge => {
+                crate::forge::ensure_installer(store_dir, resolved).await?
+            }
+        };
+        launch::install_runtime(loaded.loader(), role, resolved, &installer, &staging).await?;
         let sealing = staging.clone();
         blocking(move || seal_runtime(&sealing)).await
     }

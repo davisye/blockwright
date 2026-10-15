@@ -34,6 +34,8 @@ final class SnippetModules {
         "net.minecraft.world.entity.Entity",
         "net.neoforged.neoforge.common.NeoForgeMod",
         "net.neoforged.fml.loading.FMLLoader",
+        "net.minecraftforge.common.ForgeMod",
+        "net.minecraftforge.fml.loading.FMLLoader",
         "cpw.mods.modlauncher.Launcher");
 
     private static volatile Index resolved;

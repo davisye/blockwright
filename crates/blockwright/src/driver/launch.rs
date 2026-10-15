@@ -51,13 +51,38 @@ pub(crate) async fn launch_neoforge(
     params: InstanceLaunchParams,
     instances: SharedInstances,
 ) -> Result<InstanceLaunchResult> {
+    launch_loader(
+        params,
+        instances,
+        blockwright::config::LoaderEngine::NeoForge,
+    )
+    .await
+}
+pub(crate) async fn launch_forge(
+    params: InstanceLaunchParams,
+    instances: SharedInstances,
+) -> Result<InstanceLaunchResult> {
+    launch_loader(params, instances, blockwright::config::LoaderEngine::Forge).await
+}
+async fn launch_loader(
+    params: InstanceLaunchParams,
+    instances: SharedInstances,
+    engine: blockwright::config::LoaderEngine,
+) -> Result<InstanceLaunchResult> {
     let config_path = params
         .config
         .clone()
         .unwrap_or_else(|| PathBuf::from("blockwright.toml"));
     let mut loaded = load_config(&config_path)?;
+    loaded.select_engine(engine)?;
 
-    apply_auto_connect(params.role, &mut loaded.config.neoforge.client, &instances).await;
+    apply_auto_connect(
+        params.role,
+        engine,
+        &mut loaded.loader_mut().client,
+        &instances,
+    )
+    .await;
 
     let trace_path = params.trace.as_ref().map(|path| loaded.resolve_path(path));
     let control_listener = TcpListener::bind("127.0.0.1:0")
@@ -78,6 +103,7 @@ pub(crate) async fn launch_neoforge(
             agent_mod_path: params.agent_mod,
             reuse_instance_dir: params.reuse_instance_dir,
             keep_instance_dir: params.keep_instance_dir,
+            preserve_mods: params.preserve_mods,
             start_frozen: params.start_frozen,
         },
     )
@@ -249,22 +275,28 @@ pub(crate) async fn stop_instance_process(
 
 async fn apply_auto_connect(
     role: InstanceRole,
+    engine: blockwright::config::LoaderEngine,
     client: &mut blockwright::config::ClientConfig,
     instances: &SharedInstances,
 ) {
     if role != InstanceRole::Client {
         return;
     }
-    if let Some(port_file) = running_server_port_file(instances).await {
+    if let Some(port_file) = running_server_port_file(instances, engine).await {
         client.connect_port_file = Some(port_file);
     }
 }
 
-async fn running_server_port_file(instances: &SharedInstances) -> Option<PathBuf> {
+async fn running_server_port_file(
+    instances: &SharedInstances,
+    engine: blockwright::config::LoaderEngine,
+) -> Option<PathBuf> {
     let state = instances.lock().await;
     state
         .values()
-        .filter(|instance| instance.plan.role == InstanceRole::Server)
+        .filter(|instance| {
+            instance.plan.role == InstanceRole::Server && instance.plan.resolved.engine == engine
+        })
         .find_map(|instance| instance.plan.server_port_file.clone())
 }
 
@@ -690,6 +722,7 @@ pub(crate) fn test_plan(instance_id: &str, instance_dir: PathBuf, args: Vec<Stri
         env: BTreeMap::new(),
         mods: Vec::new(),
         resolved: ResolvedNeoForgeVersions {
+            engine: blockwright::config::LoaderEngine::NeoForge,
             minecraft_version: "1.21.1".to_string(),
             loader_version: "21.1.0".to_string(),
         },
@@ -763,15 +796,65 @@ mod tests {
         }
 
         let mut client = blockwright::config::ClientConfig::default();
-        apply_auto_connect(InstanceRole::Client, &mut client, &instances).await;
+        apply_auto_connect(
+            InstanceRole::Client,
+            blockwright::config::LoaderEngine::NeoForge,
+            &mut client,
+            &instances,
+        )
+        .await;
         assert_eq!(
             client.connect_port_file.as_deref(),
             Some(std::path::Path::new("/srv/one/blockwright-server-port"))
         );
 
         let mut as_server = blockwright::config::ClientConfig::default();
-        apply_auto_connect(InstanceRole::Server, &mut as_server, &instances).await;
+        apply_auto_connect(
+            InstanceRole::Server,
+            blockwright::config::LoaderEngine::NeoForge,
+            &mut as_server,
+            &instances,
+        )
+        .await;
         assert_eq!(as_server.connect_port_file, None);
+    }
+
+    #[tokio::test]
+    async fn auto_connect_ignores_servers_using_another_loader() {
+        use blockwright::config::LoaderEngine;
+        let instances: SharedInstances = Default::default();
+        let plan = test_plan("neo", PathBuf::from("/nonexistent"), Vec::new());
+        instances
+            .lock()
+            .await
+            .insert("neo".into(), test_instance_with(plan));
+        let mut client = blockwright::config::ClientConfig::default();
+        apply_auto_connect(
+            InstanceRole::Client,
+            LoaderEngine::Forge,
+            &mut client,
+            &instances,
+        )
+        .await;
+        assert!(client.connect_port_file.is_none());
+        let mut plan = test_plan("forge", PathBuf::from("/nonexistent"), Vec::new());
+        plan.resolved.engine = LoaderEngine::Forge;
+        plan.server_port_file = Some(PathBuf::from("/forge/port"));
+        instances
+            .lock()
+            .await
+            .insert("forge".into(), test_instance_with(plan));
+        apply_auto_connect(
+            InstanceRole::Client,
+            LoaderEngine::Forge,
+            &mut client,
+            &instances,
+        )
+        .await;
+        assert_eq!(
+            client.connect_port_file.as_deref(),
+            Some(Path::new("/forge/port"))
+        );
     }
 
     #[tokio::test]
@@ -897,7 +980,8 @@ mod tests {
     #[tokio::test]
     async fn sigterm_comes_first_and_a_process_that_heeds_it_is_a_clean_stop() {
         // Exits the way a JVM does on SIGTERM: shutdown hooks run, then status 128+15.
-        let (mut child, pgid) = spawn_group("trap 'sleep 0.2; exit 143' TERM; while :; do sleep 0.05; done");
+        let (mut child, pgid) =
+            spawn_group("trap 'sleep 0.2; exit 143' TERM; while :; do sleep 0.05; done");
         sleep(Duration::from_millis(200)).await;
         let started = std::time::Instant::now();
 
@@ -905,7 +989,11 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            started.elapsed()
+        );
         assert!(ended.terminated && !ended.killed);
         assert_eq!(
             close_outcome(Some(&ended), true),
@@ -987,7 +1075,13 @@ mod tests {
             connect: Some("10.0.0.5:25565".to_string()),
             ..Default::default()
         };
-        apply_auto_connect(InstanceRole::Client, &mut client, &instances).await;
+        apply_auto_connect(
+            InstanceRole::Client,
+            blockwright::config::LoaderEngine::NeoForge,
+            &mut client,
+            &instances,
+        )
+        .await;
         assert_eq!(client.connect.as_deref(), Some("10.0.0.5:25565"));
         assert_eq!(client.connect_port_file, None);
     }

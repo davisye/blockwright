@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Added Forge 1.21.1 / 52.0.28 agent and runtime installation, `launchForge`,
+  loader selection in paired launches, Playwright fixtures and MCP, and Forge
+  inventory/event prefab sources. NeoForge remains the default.
+- Added `preserveMods` for relaunching with updater-installed jars and
+  `complete_shutdown_hooks` for waiting for offscreen client shutdown hooks.
+- Added an opt-in real Forge client/server regression and packaged both agents
+  in source release builds.
+
 ## 0.1.0-alpha.1 — 2026-10-13
 
 - New package `@izakyl/blockwright-cinema`: smooth keyframed camera paths and orbits,

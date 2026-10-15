@@ -21,7 +21,7 @@ export function resolveBinaryPath(override?: string): string {
   return "blockwright";
 }
 
-export function resolveBundledAgent(engine: "neoforge"): string | undefined {
+export function resolveBundledAgent(engine: "neoforge" | "forge"): string | undefined {
   const agentsDir = join(dirname(fileURLToPath(import.meta.url)), "agents");
   if (!existsSync(agentsDir)) return undefined;
   const prefix = `blockwright-${engine}-agent`;

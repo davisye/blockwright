@@ -8,6 +8,7 @@ compile_error!(
 pub mod config;
 pub mod coverage;
 pub mod engine;
+pub mod forge;
 pub mod http;
 pub mod mods;
 pub mod neoforge;

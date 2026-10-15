@@ -1,0 +1,2 @@
+pluginManagement { repositories { gradlePluginPortal(); mavenCentral(); maven { url = 'https://maven.minecraftforge.net' } } }
+rootProject.name = 'blockwright-forge-agent'

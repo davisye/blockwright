@@ -15,6 +15,7 @@ for (const name of order) {
 for (const [file, pattern, value] of [
   ['crates/blockwright/Cargo.toml', /^version = "[^"]+"/m, `version = "${version}"`],
   ['neoforge-agent/gradle.properties', /^mod_version=.+$/m, `mod_version=${version}`],
+  ['forge-agent/gradle.properties', /^mod_version=.+$/m, `mod_version=${version}`],
   ['coverage-report/gradle.properties', /^version=.+$/m, `version=${version}`],
 ]) {
   const path = join(root, file); writeFileSync(path, readFileSync(path, 'utf8').replace(pattern, value));

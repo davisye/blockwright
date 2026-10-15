@@ -9,6 +9,7 @@ async function main(): Promise<void> {
     process.stdout.write(`Usage: blockwright-mcp [options]
 
 Minecraft automation over MCP stdio. Requires Linux x64 and Java 21.
+  --engine LOADER         forge or neoforge (default neoforge)
   --config PATH           Blockwright TOML configuration
   --cwd PATH              Working directory for game instances
   --cli PATH              Override the bundled driver

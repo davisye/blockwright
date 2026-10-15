@@ -435,13 +435,22 @@ class GameEndpointTest {
                 sources.addProperty(root.relativize(file).toString().replace('\\', '/'), java.nio.file.Files.readString(file));
             }
         }
+        if ("forge".equals(System.getProperty("blockwright.engine"))) {
+            java.nio.file.Path overlay = java.nio.file.Path.of("../packages/blockwright-minecraft/java-forge");
+            try (var files = java.nio.file.Files.walk(overlay)) {
+                for (java.nio.file.Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                    sources.addProperty(overlay.relativize(file).toString().replace('\\', '/'), java.nio.file.Files.readString(file));
+                }
+            }
+        }
         JsonObject module = new JsonObject();
         module.addProperty("name", "blockwright.minecraft");
         module.add("sources", sources);
         JsonObject load = new JsonObject();
         load.add("module", module);
         try (FakeGame game = new FakeGame(); FakeGame.Peer peer = game.connect()) {
-            assertTrue(peer.call("load", load).has("result"));
+            JsonObject reply = peer.call("load", load);
+            assertTrue(reply.has("result"), reply.toString());
             // The fake game runs no server or client, so drive something that needs neither.
             long run = peer.run(task("return blockwright.minecraft.core.Values.obj(\"loaded\", true);"));
             assertTrue(peer.next(run).json().getAsJsonObject("out").get("loaded").getAsBoolean());

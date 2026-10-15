@@ -15,6 +15,8 @@ pub(crate) const NEOFORGE_GROUP_PATH: &str = "net/neoforged/neoforge";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedNeoForgeVersions {
+    #[serde(default)]
+    pub engine: crate::config::LoaderEngine,
     pub minecraft_version: String,
     pub loader_version: String,
 }
@@ -39,6 +41,7 @@ pub async fn resolve_versions(neoforge: &NeoForgeConfig) -> Result<ResolvedNeoFo
     };
 
     Ok(ResolvedNeoForgeVersions {
+        engine: crate::config::LoaderEngine::NeoForge,
         minecraft_version,
         loader_version,
     })
@@ -240,5 +243,22 @@ mod tests {
     fn filters_latest_loader_by_configured_minecraft_version() {
         assert_eq!(loader_version_prefix_for_minecraft("1.21.1"), "21.1.");
         assert_eq!(loader_version_prefix_for_minecraft("26.1.2"), "26.1.2.");
+    }
+}
+
+impl ResolvedNeoForgeVersions {
+    pub fn artifact_version(&self) -> String {
+        if self.engine == crate::config::LoaderEngine::Forge {
+            format!("{}-{}", self.minecraft_version, self.loader_version)
+        } else {
+            self.loader_version.clone()
+        }
+    }
+    pub fn client_version_id(&self) -> String {
+        if self.engine == crate::config::LoaderEngine::Forge {
+            format!("{}-forge-{}", self.minecraft_version, self.loader_version)
+        } else {
+            format!("neoforge-{}", self.loader_version)
+        }
     }
 }

@@ -23,13 +23,13 @@ export function nativeSourceHash() {
   const hash = createHash('sha256');
   const visit = path => {
     for (const entry of readdirSync(path, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-      if (['build', '.gradle', 'dist', 'node_modules', 'run'].includes(entry.name)) continue;
+      if (['build', '.gradle', '.vscode', 'dist', 'node_modules', 'run'].includes(entry.name)) continue;
       const child = join(path, entry.name);
       if (entry.isDirectory()) visit(child);
       else { hash.update(relative(root, child)); hash.update('\0'); hash.update(readFileSync(child)); }
     }
   };
-  for (const dir of ['crates', 'neoforge-agent', 'coverage-report', 'packages/blockwright-client/scripts']) visit(join(root, dir));
+  for (const dir of ['crates', 'neoforge-agent', 'forge-agent', 'coverage-report', 'packages/blockwright-client/scripts']) visit(join(root, dir));
   for (const file of ['Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'scripts/release-lib.mjs', 'scripts/build-release.mjs', 'scripts/third-party.mjs']) hash.update(readFileSync(join(root, file)));
   return hash.digest('hex');
 }
@@ -47,6 +47,7 @@ export function checkVersions() {
   for (const [file, pattern] of [
     ['crates/blockwright/Cargo.toml', /^version = "([^"]+)"/m],
     ['neoforge-agent/gradle.properties', /^mod_version=(.+)$/m],
+    ['forge-agent/gradle.properties', /^mod_version=(.+)$/m],
     ['coverage-report/gradle.properties', /^version=(.+)$/m],
   ]) {
     if (readFileSync(join(root, file), 'utf8').match(pattern)?.[1] !== version) throw new Error(`${file}: version must be ${version}`);

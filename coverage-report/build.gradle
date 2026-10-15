@@ -61,3 +61,7 @@ tasks.named("jar") {
         }
     }
 }
+
+// Keep large build outputs outside the source checkout when requested.
+def externalBuild = providers.gradleProperty("buildRoot").orElse(providers.environmentVariable("BLOCKWRIGHT_BUILD_ROOT"))
+if (externalBuild.isPresent()) layout.buildDirectory = file("${externalBuild.get()}/${project.projectDir.name}")
